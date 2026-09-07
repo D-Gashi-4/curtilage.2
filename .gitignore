@@ -1,0 +1,9 @@
+tracker.db
+digest.html
+prime_postcodes.json
+__pycache__/
+*.pyc
+.vercel
+.env
+.env.local
+design-canvas/
