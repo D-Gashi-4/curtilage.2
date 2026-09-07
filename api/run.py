@@ -1,6 +1,6 @@
 """
 Vercel serverless entry point. Wraps tracker.py's run flow (ingest, then
-digest, then send) behind an HTTP GET, triggered daily by the cron
+ digest, then send) behind an HTTP GET, triggered daily by the cron
 schedule in vercel.json.
 
 Requires POSTGRES_URL (or DATABASE_URL) to be set -- see db.py. Without
@@ -30,11 +30,9 @@ import tracker  # noqa: E402
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         expected = os.environ.get("CRON_SECRET")
-        if expected:
-            auth = self.headers.get("Authorization", "")
-            if auth != f"Bearer {expected}":
-                self._json(401, {"status": "error", "error": "unauthorized"})
-                return
+        if expected and self.headers.get("Authorization", "") != f"Bearer {expected}":
+            self._json(401, {"status": "error", "error": "unauthorized"})
+            return
 
         if not (os.environ.get("POSTGRES_URL") or os.environ.get("DATABASE_URL")):
             self._json(500, {
@@ -53,22 +51,26 @@ class handler(BaseHTTPRequestHandler):
                     tracker.send(body)
                     conn.executemany(
                         "UPDATE applications SET digested = 1 WHERE name = ?",
-                        [(n,) for n in names])
+                        [(name,) for name in names],
+                    )
                     conn.commit()
                     result = {"status": "ok", "leads_digested": len(names)}
                 else:
-                    result = {"status": "ok", "leads_digested": 0,
-                              "note": "nothing new to send"}
+                    result = {
+                        "status": "ok",
+                        "leads_digested": 0,
+                        "note": "nothing new to send",
+                    }
             finally:
                 conn.close()
-        except Exception as e:
-            self._json(500, {"status": "error", "error": str(e)})
+        except Exception as exc:
+            self._json(500, {"status": "error", "error": str(exc)})
             return
 
         self._json(200, result)
 
-    def _json(self, code, obj):
+    def _json(self, code, payload):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(json.dumps(obj).encode())
+        self.wfile.write(json.dumps(payload).encode())
